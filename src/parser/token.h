@@ -23,6 +23,7 @@ typedef enum pp_token_id_t {
 } pp_token_id_t;
 
 typedef struct token_info_t {
+    bool is_keyword;
     token_id_t id;
     string_t token;
     const char *memo;
@@ -32,6 +33,7 @@ typedef struct token_info_t {
 extern "C" {
 #endif
 
+    extern int g_max_operator_len;
     int token_init();
     void token_destroy();
     token_info_t *token_find(char *str, const int len);

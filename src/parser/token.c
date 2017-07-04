@@ -5,12 +5,15 @@
 #include "token.h"
 
 static token_info_t tokens[] = {
-#define T(mode, name, tag, memo, val, is_keyword) {name, {tag, sizeof(tag) - 1}, memo},
+#define T(mode, name, tag, memo, val, is_keyword) \
+    {is_keyword, name, {tag, sizeof(tag) - 1}, memo},
 #include "token_define.h"
 #undef T
+    {false, T_NULL, {NULL, 0}, "NULL"}
 };
 
 static HashArray token_hash_array;
+int g_max_operator_len = 0;
 
 int token_init()
 {
@@ -19,13 +22,16 @@ int token_init()
     int i;
 
     token_count = sizeof(tokens) / sizeof(token_info_t);
-    printf("token_count: %d\n", token_count);
-
-    if ((result=hash_init(&token_hash_array, simple_hash, 1024, 0.00)) != 0) {
+    if ((result=hash_init(&token_hash_array, simple_hash, token_count * 5, 0.00)) != 0) {
         return result;
     }
     for (i=0; i<token_count; i++) {
         if (tokens[i].token.str != NULL) {
+            if (!tokens[i].is_keyword) {
+                if (tokens[i].token.len > g_max_operator_len) {
+                    g_max_operator_len = tokens[i].token.len;
+                }
+            }
             if ((result=hash_insert_ex(&token_hash_array, tokens[i].token.str,
                             tokens[i].token.len, tokens + i, 0, false)) != 1)
             {
@@ -35,6 +41,7 @@ int token_init()
         }
     }
     hash_stat_print(&token_hash_array);
+    printf("token_count: %d, g_max_operator_len: %d\n", token_count, g_max_operator_len);
     return 0;
 }
 
