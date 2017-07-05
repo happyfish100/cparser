@@ -11,7 +11,7 @@ typedef struct token_entry_t {
 } token_entry_t;
 
 typedef struct token_array_t {
-    token_entry_t *list;
+    token_entry_t *items;
     int count;   //element count
     int size;    //alloc size
 } token_array_t;

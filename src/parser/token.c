@@ -5,8 +5,8 @@
 #include "token.h"
 
 static token_info_t tokens[] = {
-#define T(mode, name, tag, memo, val, is_keyword) \
-    {is_keyword, name, {tag, sizeof(tag) - 1}, memo},
+#define T(mode, id, tag, memo, val, is_keyword) \
+    {is_keyword, id, {tag, sizeof(tag) - 1}, memo},
 #include "token_define.h"
 #undef T
     {false, T_NULL, {NULL, 0}, "NULL"}
@@ -14,6 +14,25 @@ static token_info_t tokens[] = {
 
 static HashArray token_hash_array;
 int g_max_operator_len = 0;
+special_tokens_t g_special_tokens;
+
+#define TOKEN_SET(t, mode, ID, desc, is_key) \
+    do { \
+       t.is_keyword = is_key; \
+       t.id = ID;             \
+       t.token.str = NULL;    \
+       t.token.len = 0;       \
+       t.memo = desc;         \
+    } while (0)
+
+static void init_special_tokens()
+{
+    TOKEN_SET(g_special_tokens.eof, _ALL, T_EOF, "end of input", false);
+    TOKEN_SET(g_special_tokens.identifier, _ALL, T_IDENTIFIER, "identifier", false);
+    TOKEN_SET(g_special_tokens.number, _ALL, T_NUMBER, "number constant", false);
+    TOKEN_SET(g_special_tokens.character, _ALL, T_CHARACTER_CONSTANT, "character constant", false);
+    TOKEN_SET(g_special_tokens.string, _ALL, T_STRING_LITERAL, "string literal", false);
+}
 
 int token_init()
 {
@@ -42,6 +61,8 @@ int token_init()
     }
     hash_stat_print(&token_hash_array);
     printf("token_count: %d, g_max_operator_len: %d\n", token_count, g_max_operator_len);
+
+    init_special_tokens();
     return 0;
 }
 
