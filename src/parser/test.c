@@ -19,6 +19,7 @@ int main(int argc, char **argv)
         return result;
     }
 
+    printf("d=%f, =x\79=\n", 1.0e5);
     if ((result=lexer_parse(filename, &array, &error_info)) == 0) {
     } else {
         fprintf(stderr, "%s\n", error_info.error);

@@ -34,7 +34,7 @@ PUNCTUAVAL(SEMICOLON,       ";",       ';')
 PUNCTUAVAL(EQUAL,           "=",       '=')
 PUNCTUAVAL(COMMA,           ",",       ',')
 PUNCTUAVAL(HASH,            "#",       '#')
-T(_ALL, NEWLINE,            "\n",  "new line",  ='\n', false)
+T(_ALL, T_NEWLINE,            NULL,  "new line",  ='\n', false)
 
 PUNCTUAVAL(MINUSGREATER,         "->", 256)
 PUNCTUATOR(PLUSPLUS,             "++")
@@ -68,6 +68,8 @@ T(_ALL, T_CHARACTER_CONSTANT, NULL, "character constant", , false)
 T(_ALL, T_STRING_LITERAL,     NULL, "string literal",     , false)
 T(_ALL, T_MACRO_PARAMETER,    NULL, "macro parameter",    , false)
 T(_ALL, T_UNKNOWN_CHAR,       NULL, "unknown character",  , false)
+T(_ALL, T_LINE_COMMENT,       NULL, "line comment as // ...",      , false)
+T(_ALL, T_BLOCK_COMMENT,      NULL, "block comment as /* ... */",  , false)
 
 /* keywords */
 KEY(_ALL,   auto)

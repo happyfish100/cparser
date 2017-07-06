@@ -27,11 +27,14 @@ special_tokens_t g_special_tokens;
 
 static void init_special_tokens()
 {
+    TOKEN_SET(g_special_tokens.newline, _ALL, T_NEWLINE, "new line", false);
     TOKEN_SET(g_special_tokens.eof, _ALL, T_EOF, "end of input", false);
     TOKEN_SET(g_special_tokens.identifier, _ALL, T_IDENTIFIER, "identifier", false);
     TOKEN_SET(g_special_tokens.number, _ALL, T_NUMBER, "number constant", false);
     TOKEN_SET(g_special_tokens.character, _ALL, T_CHARACTER_CONSTANT, "character constant", false);
     TOKEN_SET(g_special_tokens.string, _ALL, T_STRING_LITERAL, "string literal", false);
+    TOKEN_SET(g_special_tokens.line_comment,  _ALL, T_LINE_COMMENT, "line comment as // ...", false);
+    TOKEN_SET(g_special_tokens.block_comment, _ALL, T_BLOCK_COMMENT, "block comment as /* ... */", false);
 }
 
 int token_init()

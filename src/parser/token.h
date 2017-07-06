@@ -30,7 +30,10 @@ typedef struct token_info_t {
 } token_info_t;
 
 typedef struct special_tokens_t {
+    token_info_t newline;
     token_info_t eof;
+    token_info_t line_comment;   //comment as: // ...
+    token_info_t block_comment;  //comment as: /* ... */
     token_info_t identifier;
     token_info_t number;
     token_info_t character;
