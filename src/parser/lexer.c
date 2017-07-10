@@ -9,7 +9,10 @@ typedef struct lexer_context_t {
     error_info_t *error_info;
 } lexer_context_t;
 
+
 #define p (context->cur)
+
+#define IS_C_SPACE(ch) (ch == ' ' || ch == '\t' || ch == '\r')
 
 #define MOVE_PTR_NEXT(context) \
     do { \
@@ -17,10 +20,41 @@ typedef struct lexer_context_t {
         context->position.colno++; \
     } while (0)
 
+#define MOVE_PTR(context, n) \
+    do { \
+        p += n;              \
+        context->position.colno += n; \
+    } while (0)
+
+#define INC_LINE_NO(context) \
+    do { \
+        context->position.lineno++;  \
+        context->position.colno = 0; \
+    } while (0)
+
+#define MOVE_PTR_NEXT_AND_INC_LINE_NO(context) \
+    do { \
+        p++;              \
+        context->position.lineno++;  \
+        context->position.colno = 0; \
+    } while (0)
+
 #define SET_ERROR(context, str) \
     do { \
         context->error_info->position = context->position;               \
         snprintf(context->error_info->error, MAX_ERROR_SIZE, "%s", str); \
+    } while (0)
+
+#define SET_ERROR_WITH_PARAM1(context, format, p1) \
+    do { \
+        context->error_info->position = context->position;                \
+        snprintf(context->error_info->error, MAX_ERROR_SIZE, format, p1); \
+    } while (0)
+
+#define SET_ERROR_WITH_PARAM2(context, format, p1, p2) \
+    do { \
+        context->error_info->position = context->position;                    \
+        snprintf(context->error_info->error, MAX_ERROR_SIZE, format, p1, p2); \
     } while (0)
 
 static int parse_escaped_char(lexer_context_t *context)
@@ -99,21 +133,275 @@ static int parse_string(lexer_context_t *context, token_entry_t *token,
     }
 
     if (result != 0 || p == context->end) {
-        context->error_info->position = context->position;
-        snprintf(context->error_info->error, MAX_ERROR_SIZE,
-                "expect end character: %c", end_char);
+        SET_ERROR_WITH_PARAM1(context, "expect end character: %c", end_char);
         return EINVAL;
+    }
+
+    MOVE_PTR_NEXT(context);
+    return 0;
+}
+
+static int parse_line_comment(lexer_context_t *context, token_entry_t *token)
+{
+    char *pr;
+    int line_count = 0;
+
+     while (1) {
+        while ((p < context->end) && (*p != '\n')) {
+            MOVE_PTR_NEXT(context);
+        }
+
+        line_count++;
+        if (p == context->end) {
+            break;
+        }
+
+        pr = p - 1;
+        while (IS_C_SPACE(*pr)) {
+            pr--;
+        }
+
+        if (*pr == '\\') {
+            MOVE_PTR_NEXT_AND_INC_LINE_NO(context);  //skip \n
+        } else {
+            break;
+        }
+    }
+
+    if (line_count > 1) {
+        fprintf(stderr, "multi-line comment\n");
+        //SET_ERROR(context, "multi-line comment");
     }
 
     return 0;
 }
 
-static int next_token(lexer_context_t *context, token_entry_t *token)
+static int parse_block_comment(lexer_context_t *context, token_entry_t *token)
+{
+    while ((p + 1 < context->end) && !((*p == '*') && *(p+1) == '/')) {
+        if (*p == '\n') {
+            MOVE_PTR_NEXT_AND_INC_LINE_NO(context);
+        } else {
+            MOVE_PTR_NEXT(context);
+        }
+    }
+
+    if (p + 1 == context->end) {
+        SET_ERROR(context, "expect end of block comment");
+        return EINVAL;
+    }
+
+    MOVE_PTR(context, 2);
+    return 0;
+}
+
+static int parse_number_part(lexer_context_t *context, token_entry_t *token,
+        bool *is_integer)
+{
+    bool have_point;
+    if (*p == '.') {
+        have_point = true;
+        MOVE_PTR(context, 2);  //skip .#
+    } else if ((*p == '0') && (p + 1 < context->end)) {
+        if (*(p+1) == 'x' || *(p+1) == 'X') { //hex char 0xHH
+            MOVE_PTR(context, 2);  //skip 0x
+            if (!(p < context->end && IS_HEX_CHAR(*p))) {
+                SET_ERROR_WITH_PARAM1(context, "invalid hex character: %c", *p);
+                return EINVAL;
+            }
+
+            do {
+                MOVE_PTR_NEXT(context);
+            } while (p < context->end && IS_HEX_CHAR(*p));
+            *is_integer = true;
+            return 0;
+
+        } else {
+            have_point = false;
+            MOVE_PTR_NEXT(context);
+        }
+    } else {
+        have_point = false;
+        MOVE_PTR_NEXT(context);
+    }
+
+    while (p < context->end) {
+        if (*p == '.') {
+            if (have_point) {
+                break;
+            }
+            have_point = true;
+            MOVE_PTR_NEXT(context);
+        } else if (IS_DIGIT_CHAR(*p)) {
+            MOVE_PTR_NEXT(context);
+        } else {
+            break;
+        }
+    }
+
+    *is_integer = !have_point;
+    return 0;
+}
+
+static int parse_number_suffix(lexer_context_t *context, token_entry_t *token,
+        const bool is_integer)
+{
+    if (!((p < context->end) && IS_LETTER_CHAR(*p))) {
+        return 0;
+    }
+
+    if (is_integer) {
+        if (*p == 'u' || *p == 'U') {
+            MOVE_PTR_NEXT(context);
+            if (!((p < context->end) && IS_LETTER_CHAR(*p))) {
+                return 0;
+            }
+            if (*p == 'l' || *p == 'L') {
+                MOVE_PTR_NEXT(context);
+            } else {
+                SET_ERROR_WITH_PARAM2(context, "invalid suffix \"%c%c\" "
+                        "on integer constant", *(p-1), *p);
+                return EINVAL;
+            }
+        } if (*p == 'l' || *p == 'L') {
+            MOVE_PTR_NEXT(context);
+            if (!((p < context->end) && IS_LETTER_CHAR(*p))) {
+                return 0;
+            }
+            if (*p == 'u' || *p == 'U') {
+                MOVE_PTR_NEXT(context);
+            } else if ((*p == 'l' || *p == 'L') && (*(p - 1) == *p)) { //LL or ll
+                MOVE_PTR_NEXT(context);
+            } else {
+                SET_ERROR_WITH_PARAM2(context, "invalid suffix \"%c%c\" "
+                        "on integer constant", *(p-1), *p);
+                return EINVAL;
+            }
+        } else {
+            SET_ERROR_WITH_PARAM1(context, "invalid suffix \"%c\" "
+                    "on integer constant", *p);
+            return EINVAL;
+        }
+    } else {
+        if ((*p == 'f' || *p == 'F') || (*p == 'l' || *p == 'L')) {
+            MOVE_PTR_NEXT(context);
+        } else {
+            SET_ERROR_WITH_PARAM1(context, "invalid suffix \"%c\" "
+                    "on float constant", *p);
+            return EINVAL;
+        }
+    }
+
+    return 0;
+}
+
+static int parse_number(lexer_context_t *context, token_entry_t *token)
+{
+    int result;
+    bool is_integer;
+    char *start;
+
+    start = p;
+    if ((result=parse_number_part(context, token, &is_integer)) != 0) {
+        return result;
+    }
+
+    if ((p + 1 < context->end) && (*p == 'e')) {  //scientific notation
+        if (!IS_DIGIT_CHAR(*(p+1))) {
+            SET_ERROR(context, "exponent has no digits");
+            return EINVAL;
+        }
+        MOVE_PTR(context, 2);  //skip e#
+        while (p < context->end && IS_DIGIT_CHAR(*p)) {
+            MOVE_PTR_NEXT(context);
+        }
+        is_integer = false;
+    } else if (is_integer && ((start + 1) < p
+                && IS_DIGIT_CHAR(*(start+1))))
+    { //octal number
+        start++;   //skip 0
+        while (start < p && IS_DIGIT_CHAR(*start)) {
+            if (!IS_OCT_CHAR(*start)) {
+                SET_ERROR(context, "invalid octal digits");
+                return EINVAL;
+            }
+            start++;
+        }
+    }
+           
+    return parse_number_suffix(context, token, is_integer);
+}
+
+static int parse_identifier(lexer_context_t *context, token_entry_t *token)
+{
+    return 0;
+}
+
+static int parse_token(lexer_context_t *context, token_entry_t *token)
 {
     int result;
     int char_count;
 
-    while ((p < context->end) && (*p == ' ' || *p == '\t' || *p == '\r')) {
+    result = 0;
+    switch (*p) {
+        case '\n':
+            token->info = &g_special_tokens.newline;
+
+            MOVE_PTR_NEXT_AND_INC_LINE_NO(context);  //skip \n
+            break;
+        case '\'':  //character
+            token->info = &g_special_tokens.character;
+            MOVE_PTR_NEXT(context);
+            result = parse_string(context, token, *p, &char_count);
+            if (result == 0 && char_count != 1) {
+                SET_ERROR_WITH_PARAM1(context, "expect one charater, "
+                        "but %d characters occur", char_count);
+                result = EINVAL;
+            }
+            break;
+        case '\"':  //string
+            token->info = &g_special_tokens.string;
+            MOVE_PTR_NEXT(context);
+            result = parse_string(context, token, *p, &char_count);
+            break;
+        case '/':  //maybe comment
+            if (p + 1 < context->end) {
+                if (*(p + 1) == '/') {
+                    token->info = &g_special_tokens.line_comment;
+                    result = parse_line_comment(context, token);
+                } else if (*(p + 1) == '*') {
+                    token->info = &g_special_tokens.block_comment;
+                    result = parse_block_comment(context, token);
+                }
+            }
+            //TODO
+            break;
+        case '.':  //maybe number
+            if ((p + 1 < context->end) && IS_DIGIT_CHAR(*(p+1))) {
+                token->info = &g_special_tokens.number;
+                result = parse_number(context, token);
+            }
+            MOVE_PTR_NEXT(context);  //TODO
+            break;
+        default:
+            if ((*p == '_') || IS_LETTER_CHAR(*p)) { //identifier
+                result = parse_identifier(context, token);  //TODO
+            } else if (IS_DIGIT_CHAR(*p)) {  //number
+                token->info = &g_special_tokens.number;
+                result = parse_number(context, token);
+            }
+            MOVE_PTR_NEXT(context);  //TODO
+            break;
+    }
+
+    return result;
+}
+
+static int next_token(lexer_context_t *context, token_entry_t *token)
+{
+    int result;
+
+    while ((p < context->end) && IS_C_SPACE(*p)) {
         MOVE_PTR_NEXT(context);
     }
 
@@ -121,39 +409,11 @@ static int next_token(lexer_context_t *context, token_entry_t *token)
         return ENOENT;
     }
 
+    token->position = context->position;
     token->str.str = p;
-    switch (*p) {
-        case '\n':
-            token->position = context->position;
-            token->info = &g_special_tokens.newline;
 
-            MOVE_PTR_NEXT(context);
-            context->position.lineno++;
-            context->position.colno = 0;
-            break;
-        case '\'':  //character
-        case '\"':  //string
-            MOVE_PTR_NEXT(context);
-            result = parse_string(context, token, *p, &char_count);
-            break;
-        case '/':  //maybe comment
-            token->info = &g_special_tokens.line_comment;
-            token->info = &g_special_tokens.block_comment;
-            break;
-        case '.':  //maybe number
-            if ((p < context->end) && (*(p+1) >= '0' && *(p+1) <= '9')) {
-                p++;
-            }
-            break;
-        default:
-            if ((*p == '_') || (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')) {
-            } else if (*p >= '0' && *p <= '9') {
-            }
-            break;
-    }
-
-    token->str.len = 1;   //TODO
-
+    result = parse_token(context, token);
+    token->str.len = p - token->str.str;
     return result;
 }
 
@@ -209,6 +469,7 @@ static int do_parse(lexer_context_t *context, token_array_t *array)
             break;
         }
 
+        token->info = NULL;
         if ((result=get_next_token(context, token)) == 0) {
             array->count++;
         } else {

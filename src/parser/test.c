@@ -19,7 +19,10 @@ int main(int argc, char **argv)
         return result;
     }
 
-    printf("d=%f, =x\79=\n", 1.0e5);
+    //coment 1  \   
+    comment 2
+
+    printf("d=%lld, =x\x31=\n", 07LL);
     if ((result=lexer_parse(filename, &array, &error_info)) == 0) {
     } else {
         fprintf(stderr, "%s\n", error_info.error);
