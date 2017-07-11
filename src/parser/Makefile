@@ -1,6 +1,6 @@
 .SUFFIXES: .c .o
 
-COMPILE = $(CC)  -Wall -D_GNU_SOURCE -g -O2
+COMPILE = $(CC)  -Wall -D_GNU_SOURCE -g -O2 -Wno-error
 INC_PATH = 
 LIB_PATH =  -lpthread -ldl -rdynamic -lfastcommon
 TARGET_PATH = /usr/bin

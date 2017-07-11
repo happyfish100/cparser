@@ -12,6 +12,7 @@ typedef struct position_t {
 } position_t;
 
 typedef struct error_info_t {
+    bool strict;
     position_t position;
     char error[MAX_ERROR_SIZE];
 } error_info_t;

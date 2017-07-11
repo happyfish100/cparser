@@ -27,6 +27,8 @@ special_tokens_t g_special_tokens;
 
 static void init_special_tokens()
 {
+    TOKEN_SET(g_special_tokens.preprocessor, _ALL, T_PREPROCESSOR, "preprocessor", false);
+    TOKEN_SET(g_special_tokens.backslash, _ALL, T_BACKSLASH, "backslash", false);
     TOKEN_SET(g_special_tokens.newline, _ALL, T_NEWLINE, "new line", false);
     TOKEN_SET(g_special_tokens.eof, _ALL, T_EOF, "end of input", false);
     TOKEN_SET(g_special_tokens.identifier, _ALL, T_IDENTIFIER, "identifier", false);

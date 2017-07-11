@@ -20,10 +20,11 @@ int main(int argc, char **argv)
         return result;
     }
 
-    //coment 1  \   
-    comment 2
+    //coment 1  
+    //comment 2
 
     printf("d=%lld, =x\x31=\n", 07LL);
+    memset( &error_info, 0, sizeof(error_info));
     if ((result=lexer_parse(filename, &array, &error_info)) == 0) {
     } else {
         fprintf(stderr, "file: %s, %d:%d, %s\n",
@@ -32,6 +33,7 @@ int main(int argc, char **argv)
     }
 
     printf("count: %d\n", array.count);
+    /*
     for (i=0; i<array.count; i++) {
         printf("id: %d, line %d:%d, %.*s(%d)\n",
         array.items[i].info->id,
@@ -40,6 +42,7 @@ int main(int argc, char **argv)
         array.items[i].str.len, array.items[i].str.str,
         array.items[i].str.len);
     }
+    */
 
     token_destroy();
     return 0;

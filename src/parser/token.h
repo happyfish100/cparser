@@ -30,6 +30,8 @@ typedef struct token_info_t {
 } token_info_t;
 
 typedef struct special_tokens_t {
+    token_info_t preprocessor;
+    token_info_t backslash;
     token_info_t newline;
     token_info_t eof;
     token_info_t line_comment;   //comment as: // ...

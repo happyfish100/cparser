@@ -57,6 +57,19 @@ typedef struct lexer_context_t {
         snprintf(context->error_info->error, MAX_ERROR_SIZE, format, p1, p2); \
     } while (0)
 
+#define SET_WARNING(context, str) \
+    do { \
+        if (context->error_info->strict) { \
+            SET_ERROR(context, str);       \
+            return EINVAL;  \
+        } else {            \
+            fprintf(stderr, "%s:%d:%d, warning: %s\n", \
+                    context->position.filename,        \
+                    context->position.lineno,          \
+                    context->position.colno, str);     \
+        }  \
+    } while (0)
+
 static int parse_escaped_char(lexer_context_t *context)
 {
     if (p == context->end) {
@@ -134,8 +147,6 @@ static int parse_string(lexer_context_t *context, token_entry_t *token,
         }
     }
 
-    printf("string char_count: %d\n", *char_count);
-
     if (result != 0 || p == context->end) {
         SET_ERROR_WITH_PARAM1(context, "expect end character: %c", end_char);
         return EINVAL;
@@ -151,7 +162,7 @@ static int parse_line_comment(lexer_context_t *context, token_entry_t *token)
     int line_count = 0;
 
     MOVE_PTR(context, 2);
-     while (1) {
+    while (1) {
         while ((p < context->end) && (*p != '\n')) {
             MOVE_PTR_NEXT(context);
         }
@@ -173,9 +184,9 @@ static int parse_line_comment(lexer_context_t *context, token_entry_t *token)
         }
     }
 
-     printf("p==%.*s, line %d:%d\n", 10, p, context->position.lineno, context->position.colno);
+    printf("p==%.*s, line %d:%d\n", 10, p, context->position.lineno, context->position.colno);
     if (line_count > 1) {
-        fprintf(stderr, "multi-line comment, line count: %d\n", line_count);
+        SET_WARNING(context, "multi-line comment");
     }
 
     return 0;
@@ -322,7 +333,7 @@ static int parse_number(lexer_context_t *context, token_entry_t *token)
             MOVE_PTR_NEXT(context);
         }
         is_integer = false;
-    } else if (is_integer && ((start + 1) < p
+    } else if (is_integer && ((*start == '0') && ((start + 1) < p)
                 && IS_DIGIT_CHAR(*(start+1))))
     { //octal number
         start++;   //skip 0
@@ -345,6 +356,65 @@ static void parse_identifier(lexer_context_t *context, token_entry_t *token)
     {
         MOVE_PTR_NEXT(context);
     }
+}
+
+static int parse_preprocessor(lexer_context_t *context, token_entry_t *token)
+{
+    char *pr;
+
+    MOVE_PTR_NEXT(context);
+    while (1) {
+        while ((p < context->end) && (*p != '\n')) {
+            MOVE_PTR_NEXT(context);
+        }
+
+        if (p == context->end) {
+            break;
+        }
+
+        pr = p - 1;
+        while (IS_C_SPACE(*pr)) {
+            pr--;
+        }
+
+        if (*pr == '\\') {
+            MOVE_PTR_NEXT_AND_INC_LINE_NO(context);  //skip \n
+        } else {
+            break;
+        }
+    }
+
+    return 0;
+}
+
+static int parse_backslash(lexer_context_t *context, token_entry_t *token)
+{
+    int space_count;
+    MOVE_PTR_NEXT(context);
+    if ((p < context->end) && (*p == '\n')) {
+        return 0;
+    }
+
+    space_count = 0;
+    while ((p < context->end) && (IS_C_SPACE(*p) && *p != '\n')) {
+        MOVE_PTR_NEXT(context);
+        space_count++;
+    }
+
+    if (p < context->end) {
+        if (*p != '\n') {
+            SET_ERROR(context, "stray '\\' in program\n");
+            return EINVAL;
+        }
+    } else {
+        SET_WARNING(context, "backslash-newline at end of file");
+    }
+
+    if (space_count > 0) {
+        SET_WARNING(context, "backslash and newline separated by spaces");
+    }
+
+    return 0;
 }
 
 static int parse_operator(lexer_context_t *context, token_entry_t *token)
@@ -416,6 +486,12 @@ static int parse_token(lexer_context_t *context, token_entry_t *token)
                 return parse_number(context, token);
             }
             break;
+        case '#':
+            token->info = &g_special_tokens.preprocessor;
+            return parse_preprocessor(context, token);
+        case '\\':
+            token->info = &g_special_tokens.backslash;
+            return parse_backslash(context, token);
         default:
             if (IS_DIGIT_CHAR(*p)) {  //number
                 token->info = &g_special_tokens.number;
