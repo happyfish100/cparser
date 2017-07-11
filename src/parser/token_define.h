@@ -34,7 +34,6 @@ PUNCTUAVAL(SEMICOLON,       ";",       ';')
 PUNCTUAVAL(EQUAL,           "=",       '=')
 PUNCTUAVAL(COMMA,           ",",       ',')
 PUNCTUAVAL(HASH,            "#",       '#')
-T(_ALL, T_NEWLINE,            NULL,  "new line",  ='\n', false)
 
 PUNCTUAVAL(MINUSGREATER,         "->", 256)
 PUNCTUATOR(PLUSPLUS,             "++")
@@ -61,7 +60,8 @@ PUNCTUATOR(PIPEEQUAL,            "|=")
 PUNCTUATOR(HASHHASH,             "##")
 
 /* literals, misc */
-T(_ALL, T_EOF,                NULL, "end of input",       , false)
+T(_ALL, T_NEWLINE,            NULL, "new line",      ='\n', false)
+T(_ALL, T_EOF,                NULL, "end of input",  = 512, false)
 T(_ALL, T_IDENTIFIER,         NULL, "identifier",         , false)
 T(_ALL, T_NUMBER,             NULL, "number constant",    , false)
 T(_ALL, T_CHARACTER_CONSTANT, NULL, "character constant", , false)

@@ -117,6 +117,8 @@ static int parse_string(lexer_context_t *context, token_entry_t *token,
     int result;
     result = 0;
     *char_count = 0;
+
+    MOVE_PTR_NEXT(context);
     while ((p < context->end) && (*p != end_char)) {
         if (*p == '\n') {
             result = EINVAL;
@@ -132,6 +134,8 @@ static int parse_string(lexer_context_t *context, token_entry_t *token,
         }
     }
 
+    printf("string char_count: %d\n", *char_count);
+
     if (result != 0 || p == context->end) {
         SET_ERROR_WITH_PARAM1(context, "expect end character: %c", end_char);
         return EINVAL;
@@ -146,6 +150,7 @@ static int parse_line_comment(lexer_context_t *context, token_entry_t *token)
     char *pr;
     int line_count = 0;
 
+    MOVE_PTR(context, 2);
      while (1) {
         while ((p < context->end) && (*p != '\n')) {
             MOVE_PTR_NEXT(context);
@@ -168,9 +173,9 @@ static int parse_line_comment(lexer_context_t *context, token_entry_t *token)
         }
     }
 
+     printf("p==%.*s, line %d:%d\n", 10, p, context->position.lineno, context->position.colno);
     if (line_count > 1) {
-        fprintf(stderr, "multi-line comment\n");
-        //SET_ERROR(context, "multi-line comment");
+        fprintf(stderr, "multi-line comment, line count: %d\n", line_count);
     }
 
     return 0;
@@ -178,6 +183,7 @@ static int parse_line_comment(lexer_context_t *context, token_entry_t *token)
 
 static int parse_block_comment(lexer_context_t *context, token_entry_t *token)
 {
+    MOVE_PTR(context, 2);
     while ((p + 1 < context->end) && !((*p == '*') && *(p+1) == '/')) {
         if (*p == '\n') {
             MOVE_PTR_NEXT_AND_INC_LINE_NO(context);
@@ -332,9 +338,41 @@ static int parse_number(lexer_context_t *context, token_entry_t *token)
     return parse_number_suffix(context, token, is_integer);
 }
 
-static int parse_identifier(lexer_context_t *context, token_entry_t *token)
+static void parse_identifier(lexer_context_t *context, token_entry_t *token)
 {
-    return 0;
+    while (p < context->end && ((*p == '_') || IS_LETTER_CHAR(*p)
+                || IS_DIGIT_CHAR(*p)))
+    {
+        MOVE_PTR_NEXT(context);
+    }
+}
+
+static int parse_operator(lexer_context_t *context, token_entry_t *token)
+{
+    token_info_t *t;
+    token_info_t *last_token;
+    int len;
+    int last_len;
+
+    last_len = len = 0;
+    last_token = NULL;
+    do {
+        len++;
+        t = token_find(p, len);
+        if (t != NULL) {
+            last_token = t;
+            last_len = len;
+        }
+    } while (p + len < context->end && len < g_max_operator_len);
+
+    if (last_token != NULL) {
+        token->info = last_token;
+        MOVE_PTR(context, last_len);
+        return 0;
+    } else {
+        SET_ERROR_WITH_PARAM1(context, "unkown character %c", *p);
+        return EINVAL;
+    }
 }
 
 static int parse_token(lexer_context_t *context, token_entry_t *token)
@@ -348,53 +386,50 @@ static int parse_token(lexer_context_t *context, token_entry_t *token)
             token->info = &g_special_tokens.newline;
 
             MOVE_PTR_NEXT_AND_INC_LINE_NO(context);  //skip \n
-            break;
+            return 0;
         case '\'':  //character
             token->info = &g_special_tokens.character;
-            MOVE_PTR_NEXT(context);
             result = parse_string(context, token, *p, &char_count);
             if (result == 0 && char_count != 1) {
-                SET_ERROR_WITH_PARAM1(context, "expect one charater, "
+                SET_ERROR_WITH_PARAM1(context, "expect one character, "
                         "but %d characters occur", char_count);
                 result = EINVAL;
             }
-            break;
+            return result;
         case '\"':  //string
             token->info = &g_special_tokens.string;
-            MOVE_PTR_NEXT(context);
-            result = parse_string(context, token, *p, &char_count);
-            break;
+            return parse_string(context, token, *p, &char_count);
         case '/':  //maybe comment
             if (p + 1 < context->end) {
                 if (*(p + 1) == '/') {
                     token->info = &g_special_tokens.line_comment;
-                    result = parse_line_comment(context, token);
+                    return parse_line_comment(context, token);
                 } else if (*(p + 1) == '*') {
                     token->info = &g_special_tokens.block_comment;
-                    result = parse_block_comment(context, token);
+                    return parse_block_comment(context, token);
                 }
             }
-            //TODO
             break;
         case '.':  //maybe number
             if ((p + 1 < context->end) && IS_DIGIT_CHAR(*(p+1))) {
                 token->info = &g_special_tokens.number;
-                result = parse_number(context, token);
+                return parse_number(context, token);
             }
-            MOVE_PTR_NEXT(context);  //TODO
             break;
         default:
-            if ((*p == '_') || IS_LETTER_CHAR(*p)) { //identifier
-                result = parse_identifier(context, token);  //TODO
-            } else if (IS_DIGIT_CHAR(*p)) {  //number
+            if (IS_DIGIT_CHAR(*p)) {  //number
                 token->info = &g_special_tokens.number;
-                result = parse_number(context, token);
+                return parse_number(context, token);
+            } else if ((*p == '_') || IS_LETTER_CHAR(*p)) { //identifier
+                token->info = &g_special_tokens.identifier;
+                MOVE_PTR_NEXT(context);
+                parse_identifier(context, token);
+                return 0;
             }
-            MOVE_PTR_NEXT(context);  //TODO
             break;
     }
 
-    return result;
+    return parse_operator(context, token);
 }
 
 static int next_token(lexer_context_t *context, token_entry_t *token)
@@ -414,6 +449,7 @@ static int next_token(lexer_context_t *context, token_entry_t *token)
 
     result = parse_token(context, token);
     token->str.len = p - token->str.str;
+
     return result;
 }
 
@@ -499,6 +535,7 @@ int lexer_parse(const char *filename, token_array_t *array,
                 "read from file %s fail", filename);
         return result;
     }
+    context.position.lineno = 1;
     context.start = content;
     context.end = content + file_size;
     context.cur = content;
@@ -507,6 +544,6 @@ int lexer_parse(const char *filename, token_array_t *array,
     array->size = array->count = 0;
 
     result = do_parse(&context, array);
-    free(content);
+    //free(content);
     return result;
 }
